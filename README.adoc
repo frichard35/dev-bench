@@ -1,0 +1,31 @@
+= Dev Bench
+:keywords: dev benchmark
+
+A developer benchmark to evaluate performance for maven, npm and more.
+
+== Quick start
+
+Clone this project then
+----
+# look for options
+./db.sh --help
+
+# Run a benchmark
+./db.sh <benchmark>
+----
+
+
+== Details
+
+- Evaluate developer environment over time.
+- Compare developer environments.
+- Compare home computer with work computer.
+- Global metrics collection to allow comparison on:
+* cpu / memory
+* OS (Linux, MacOS, Windows)
+* Architecture
+* Containerization
+* Java / Maven / Node / Npm versions
+* Battery usage
+- No impact on developer existing configuration.
+
