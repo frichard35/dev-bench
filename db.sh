@@ -48,6 +48,8 @@ main() {
 
 main_benchmark() {
 
+    prerequisites
+
     local benchmark="$1"
     echo "[DEV BENCH] $benchmark benchmark selected."
     shift
@@ -84,6 +86,16 @@ main_benchmark() {
             sleep $wait
         fi
     done
+}
+
+prerequisites() {
+    if ! type numfmt >/dev/null 2>&1; then
+        echo "[DEV BENCH ERROR] dev-bench requires numfmt"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "[DEV BENCH ERROR] can be install with 'brew install coreutils'"
+        fi
+        exit 1
+    fi
 }
 
 main_publish(){
