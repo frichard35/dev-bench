@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 set -e
 
+BASE_DIR="$(dirname "$(readlink -f "$0")")"
+
 #load benchmarks
 benchmarks=()
-for bench in "benchmarks/"*".sh"; do
-    source "$bench"
+for bench in "$BASE_DIR/benchmarks/bench-"*".sh"; do
+    bench="${bench##*/}"
+    bench="${bench#bench-}"
+    benchmarks+=( "${bench%.sh}" )
 done
 
 #load available contexts
 available_contexts=()
 db_context="internet"
-for context in "contexts/"*".sh"; do
+for context in "$BASE_DIR/contexts/"*".sh"; do
     context="${context##*/}"
     available_contexts+=( "${context%.sh}" )
 done
@@ -19,7 +23,7 @@ done
 # Global Config #
 #################
 GITHUB_URL="${GITHUB_URL:-"https://github.com"}"
-WRK_PATH="${WRK_PATH:-"$PWD/wrk"}"
+WRK_PATH="${WRK_PATH:-"$BASE_DIR/wrk"}"
 if [[ "$(uname -a)" == CYGWIN* ]] || [[ "$(uname -a)"  == MINGW64* ]]; then
     WRK_PATH="$(cygpath -m "$WRK_PATH")"
 fi
@@ -34,26 +38,34 @@ main() {
         shift
         main_publish "$@"
     
-    elif [[ " ${benchmarks[*]} " =~ " $1 " ]]; then
-        main_benchmark "$@"
-
     else
-        echo "Unknown parameter passed: $1"
-        usage
+        select_benchmark "$1"
+        shift
+        main_benchmark "$@"
+    fi
+}
+
+select_benchmark() {
+    local query="$1"
+    local result="$(ls "$BASE_DIR/benchmarks/bench-$query"*".sh" 2>/dev/null || true)"
+    if [ -z "$result" ]; then
+        echo "No benchmark found for '$query'."
         exit 1
     fi
-
-    
+    if [ "$(echo "$result" | wc -l)" -gt 1 ]; then
+        echo "Multiple benchmarks found for '$query':"
+        echo "$result"
+        exit 1
+    fi
+    source "$result"
 }
 
 main_benchmark() {
-
+    
     prerequisites
 
-    local benchmark="$1"
-    echo "[DEV BENCH] $benchmark benchmark selected."
-    shift
-    
+    echo "[DEV BENCH] $benchmark_id benchmark selected."
+
     local iterations=1
     local wait=0
     local prepare=0
@@ -80,9 +92,9 @@ main_benchmark() {
     fi
 
     for ((i=1;i<=iterations;i++)); do
-        bench "$benchmark" "$prepare"
+        bench "$prepare"
         if (( i < iterations )) && (( wait > 0 )); then
-            echo "[DEV BENCH] wait for $wait seconds. [$i/$iterations] done."
+            echo -e "\n[DEV BENCH] wait for $wait seconds. [$i/$iterations] done."
             sleep $wait
         fi
     done
@@ -127,13 +139,13 @@ load_context() {
     local db_context="$1"
     [ ! -f "contexts/$db_context.sh" ] && echo "[DEV BENCH ERROR] Context '$db_context' does not exist." && exit 1
     echo "[DEV BENCH] Load context '$db_context'"
-    source "contexts/$db_context.sh"
+    source "$BASE_DIR/contexts/$db_context.sh"
 }
 
 usage() {
     echo -e "DEV BENCH: Developer environment benchmark."
     echo -e "\n[Usage benchmark] run a benchmark"
-    echo -e "  $0 [benchmark]"
+    echo -e "  $0 [benchmark_prefix] [options]"
     echo -e "    -p, --prepare                 force benchmark preparation"
     echo -e "    -i, --iterations <number>     number of iterations"
     echo -e "    -w, --wait <seconds>          wait between iterations"
@@ -143,45 +155,32 @@ usage() {
 
 
     echo -e "[Usage publish results] publish benchmark in results.log"
-    echo -e "  $0 publish"
+    echo -e "  $0 publish [options]"
     echo -e "    -c, --context <context>       load a dev context"
     echo -e "    --file <file>                 publish <file>\n"
     echo -e "   Available contexts: ${available_contexts[*]}\n"
 }
 
 bench() {
-    local benchmark="$1"
-    local option_prepare="$2"
+    local option_prepare="$1"
 
-    local version_var="${benchmark}_version"
-    local benchmark_id="$benchmark-${!version_var}"
-
-    local run_function="run_${benchmark}"
-    local pre_run_function="pre_run_${benchmark}"
-
-    local prepare_func_var="${benchmark}_prepare"
-    local prepare_function="${!prepare_func_var}"
-
-    local dir_var="${benchmark}_dir"
-    local dir="${!dir_var}"
-
-    local wrk_build_with_context="$(cat "$WRK_PATH/$dir/.db.ok" 2>/dev/null)"
-    if [ ! -f "$WRK_PATH/$dir/.db.ok" ] || [ "$wrk_build_with_context" != "$db_context" ] || [ "$option_prepare" = "1" ]; then
+    local wrk_build_with_context="$(cat "$WRK_PATH/$benchmark_dir/.db.ok" 2>/dev/null)"
+    if [ ! -f "$WRK_PATH/$benchmark_dir/.db.ok" ] || [ "$wrk_build_with_context" != "$db_context" ] || [ "$option_prepare" = "1" ]; then
         mkdir -p "$WRK_PATH"
-        echo -e "\n[DEV BENCH] $benchmark_id benchmark preparation in $dir"
-        "${prepare_function}"
+        echo -e "\n[DEV BENCH] $benchmark_id benchmark preparation in $benchmark_dir"
+        prepare_benchmark
         echo "[DEV BENCH] $benchmark_id benchmark preparation done"
     fi
 
-    pushd "$WRK_PATH/$dir" >/dev/null
-    if [[ $(type -t $pre_run_function) == function ]]; then
+    pushd "$WRK_PATH/$benchmark_dir" >/dev/null
+    if [[ $(type -t pre_run_benchmark) == function ]]; then
         echo -e "\n[DEV BENCH] $benchmark_id benchmark pre-run"
-        $pre_run_function
+        pre_run_benchmark
         echo "[DEV BENCH] $benchmark_id benchmark pre-run done"
     fi
 
     echo -e "\n[DEV BENCH] $benchmark_id benchmark starting..."
-    { time $run_function; } 2>&1 | tee bench.log
+    { time run_benchmark; } 2>&1 | tee bench.log
     local exit_code="${PIPESTATUS[0]}"
     popd >/dev/null
     if [ "$exit_code" != "0" ]; then
@@ -189,19 +188,17 @@ bench() {
         exit $exit_code
     fi
 
-    local result="$(tail -3 "$WRK_PATH/$dir/bench.log" | head -1 | sed 's/,/./' | awk '{print $NF}')"
+    local result="$(tail -3 "$WRK_PATH/$benchmark_dir/bench.log" | head -1 | sed 's/,/./' | awk '{print $NF}')"
     local result_seconds="$(echo "$result" | LC_NUMERIC=en_US.UTF-8 awk --use-lc-numeric -F'[ms]' '{print 60*$1+$2}' 2>/dev/null)"
     echo -e "\n[DEV BENCH] $benchmark_id benchmark terminated in $result_seconds seconds."
     
 
     echo -e "\n[DEV BENCH] collect metrics about this run"
-    metrics_logging "${benchmark}" "$benchmark_id" "$result_seconds"
+    metrics_logging "$result_seconds"
 }
 
 metrics_logging() {
-    local benchmark="$1"
-    local benchmark_id="$2"
-    local result_seconds="$3"
+    local result_seconds="$1"
 
     #default metrics
     metrics_line=''
@@ -214,17 +211,10 @@ metrics_logging() {
     os_metrics
 
     #specific benchmark metrics
-    local metrics_func_var="${benchmark}_metrics"
-    local metrics_func="${!metrics_func_var}"
-    if [ -n "$metrics_func" ] && [[ $(type -t "$metrics_func") == function ]]; then
-        "$metrics_func"
-    fi
+    collect_metrics_benchmark
 
     #context metrics
-    metrics_func="${db_context}_metrics"
-    if [ -n "$metrics_func" ] && [[ $(type -t "$metrics_func") == function ]]; then
-        "$metrics_func"
-    fi
+    context_metrics
 
     echo -e "\n[DEV BENCH] result line in results.log"
     echo "{$metrics_line}" | tee -a results.log

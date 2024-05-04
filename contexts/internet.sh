@@ -3,7 +3,7 @@
 
 GITHUB_URL="https://github.com"
 
-internet_metrics(){
+context_metrics(){
     add_metric context internet
     add_metric repo officials
 }
