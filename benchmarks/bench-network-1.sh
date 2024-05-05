@@ -15,7 +15,7 @@ pre_run_benchmark() {
 }
 
 run_benchmark(){
-    mvn -Dmaven.repo.local="$WRK_PATH/$network_dir/repo" validate
+    mvn -Dmaven.repo.local="$WRK_PATH/$benchmark_dir/repo" validate
 }
 
 collect_metrics_benchmark(){
