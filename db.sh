@@ -112,14 +112,17 @@ prerequisites() {
 
 main_publish(){
     
-    local results_file="results.log"
+    local results_file='results.log'
+    local extra_params=()
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
             -c|--context) db_context="$2"; shift ;;
-            -f|--file) results_file="$2" ;;
+            -f|--file) results_file="$2"; shift ;;
+            --contributor) contributor="$2"; shift ;;
+            --run-env) contributor_run_env="$2"; shift ;;
             -h|--help) usage; exit 1 ;;
-            *) echo "Unknown parameter passed: $1"; usage; exit 1 ;;
+            *) extra_params+=("$1") ;;
         esac
         shift
     done
@@ -128,7 +131,7 @@ main_publish(){
     load_context "$db_context"
 
     if [[ $(type -t publish) == function ]]; then
-        publish "$results_file"
+        publish "$results_file" "$contributor" "$contributor_run_env" "${extra_params[@]}"
     else
         echo "[DEV BENCH ERROR] You need to specify a context with a publish function."
         exit 1
@@ -154,11 +157,24 @@ usage() {
     echo -e "   Available contexts: ${available_contexts[*]}\n\n"
 
 
-    echo -e "[Usage publish results] publish benchmark in results.log"
+    echo -e "[Usage publish results] publish benchmark from results.log"
     echo -e "  $0 publish [options]"
     echo -e "    -c, --context <context>       load a dev context"
-    echo -e "    --file <file>                 publish <file>\n"
-    echo -e "   Available contexts: ${available_contexts[*]}\n"
+    echo -e "    --file <file>                 publish <file> default results.log"
+    echo -e "    --contributor <info>          (optional) Any information about the contributor"
+    echo -e "    --run-env <info>              (optional) Any information about the run environment\n"
+    # iterate over available contexts to display their specific help
+    local contexts_with_publish=""
+    for context in "${available_contexts[@]}"; do
+        if grep -q "publish()" "$BASE_DIR/contexts/$context.sh"; then
+            contexts_with_publish+=" $context"
+        fi
+    done
+    if [ -n "$contexts_with_publish" ]; then 
+        echo -e "   Available contexts to publish:$contexts_with_publish\n"
+    else
+        echo -e "   Available contexts to publish: none\n"
+    fi
 }
 
 bench() {
