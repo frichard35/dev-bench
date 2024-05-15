@@ -243,51 +243,83 @@ add_metric() {
 
 os_metrics(){
 
-    local battery=false
-    if [[ $(cat /proc/1/sched 2>/dev/null | head -n 1 | grep init) ]]; then
-        local container="true"
-        local memory="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes | numfmt --to=iec-i)"
-        local cpu="$(cat /proc/cpuinfo | grep "model name" | head -1 | awk '{print $NF}' | tr -d '()')"
-        cpu+="($(cat /proc/cpuinfo | grep "cpu MHz" | head -1 | awk '{print $NF}')MHz)"
-        local cpu_quota=$(cat /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us)
-        local cpu_period=$(cat /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us)
-        local cpu_count="$(($cpu_quota / $cpu_period))"
-    else
-        local container="false"
-        if [[ "$(uname -a)" == CYGWIN* ]] || [[ "$(uname -a)"  == MINGW64* ]]; then
-            local mem_kb="$(cat /proc/meminfo | grep 'MemTotal:' | awk '{print $2}')"
-            local memory="$(echo $((mem_kb * 1024)) | numfmt --to=iec-i)"
-            local cpu="$(cat /proc/cpuinfo | grep "model name" | head -1 | awk '{print $NF}')"
-            local cpu_count="$(cat /proc/cpuinfo | grep "model name" | wc -l )"
-            local battery_status="$(WMIC Path Win32_Battery Get BatteryStatus | tail -2 | head -1 | tr -d "[:space:]")"
-            [ "$battery_status" = "1" ] && battery=true
+    add_metric os "$OSTYPE"
+    add_metric arch "$(arch)"
 
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            local memory="$(sysctl -n hw.memsize | numfmt --to=iec-i)"
-            local cpu="$(sysctl -n machdep.cpu.brand_string | tr -d "[:space:]")"
-            local cpu_count="$(sysctl -n hw.perflevel0.physicalcpu)+$(sysctl -n hw.perflevel1.physicalcpu)"
-            if [[ ! $(pmset -g ps | head -1) =~ "AC Power" ]]; then
-                battery=true
-            fi
-        
-        elif [[ "$OSTYPE" == "linux"* ]]; then
-            local mem_kb="$(cat /proc/meminfo | grep 'MemTotal:' | awk '{print $2}')"
-            local memory="$(echo $((mem_kb * 1024)) | numfmt --to=iec-i)"
-            local cpu="$(cat /proc/cpuinfo | grep "model name" | head -1 | awk -F':' '{print $2}' | tr -d "[:space:]")"
-            local cpu_count="$(cat /proc/cpuinfo | grep "model name" | wc -l )"
+    local battery='false'
+    local container='false'
+    local virtual_machine='false'
+
+    #trying to detect if running in container
+    if [[ "$(uname -a)" == CYGWIN* ]] || [[ "$(uname -a)"  == MINGW64* ]]; then
+        local mem_kb="$(cat /proc/meminfo | grep 'MemTotal:' | awk '{print $2}')"
+        add_metric memory "$(echo $((mem_kb * 1024)) | numfmt --to=iec-i)"
+        add_metric cpu "$(cat /proc/cpuinfo | grep "model name" | head -1 | awk '{print $NF}')"
+        add_metric cpu_count "$(cat /proc/cpuinfo | grep "model name" | wc -l )"
+        local battery_status="$(wmic Path Win32_Battery Get BatteryStatus | tail -2 | head -1 | tr -d "[:space:]")"
+        [ "$battery_status" = "1" ] && battery=true
+
+        local computer_model="$(wmic csproduct get name | tail -2 | head -1 | tr -d "[:space:]")"
+        add_metric 'computer_model' "$computer_model"
+        if [[ "${computer_model,,}" = *vmware* ]] || [[ "${computer_model,,}" = *virt* ]] || [[ "${computer_model,,}" = *hyper* ]] || [[ "${computer_model,,}" = *hvm* ]]; then
+            virtual_machine='true'
+        fi
+
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        add_metric memory "$(sysctl -n hw.memsize | numfmt --to=iec-i)"
+        add_metric cpu "$(sysctl -n machdep.cpu.brand_string | tr -d "[:space:]")"
+        add_metric cpu_count "$(sysctl -n hw.perflevel0.physicalcpu)+$(sysctl -n hw.perflevel1.physicalcpu)"
+        add_metric 'computer_model' "$(system_profiler -detailLevel mini SPHardwareDataType | grep "Model Identifier:" | awk '{print $NF}')"
+        if [[ ! $(pmset -g ps | head -1) =~ "AC Power" ]]; then
+            battery='true'
+        fi
+    
+    elif [[ "$OSTYPE" == "linux"* ]]; then
+        local mem_kb="$(cat /proc/meminfo | grep 'MemTotal:' | awk '{print $2}')"
+        add_metric memory "$(echo $((mem_kb * 1024)) | numfmt --to=iec-i)"
+        local cpu="$(cat /proc/cpuinfo | grep "model name" | head -1 | awk -F':' '{print $2}' | tr -d "[:space:]")"
+        if [ -n "$cpu" ]; then
+            add_metric cpu "$cpu"
+            add_metric cpu_count "$(cat /proc/cpuinfo | grep "model name" | wc -l )"
         else
-            local memory="unknown$OSTYPE"
-            local cpu="unknown$OSTYPE"
+            add_metric cpu "$(lscpu | grep -i "model name"  | awk -F':' '{print $NF}' | xargs)"
+            add_metric cpu_count "$(lscpu | grep "^CPU"  | awk -F':' '{print $NF}' | xargs)"
+        fi
+
+        dmesg 2>/dev/null| grep -iq 'hypervisor' && virtual_machine="true"
+
+        local computer_model="$(cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || true)"
+        [ -n "$computer_model" ] && add_metric 'computer_model' "$computer_model"
+
+        local p1_cgroup_content="$(cat /proc/1/cgroup | grep '^1:')"
+        if [ -z "$p1_cgroup_content" ] || [[ "$p1_cgroup_content" == *"/cri-containerd-"* ]] || [[ "$p1_cgroup_content" == *"/docker"* ]] || 
+            [[ "$p1_cgroup_content" == *"/crio-"* ]] || [[ "$p1_cgroup_content" == *"/lxc"* ]]; then
+            container="true"
+            virtual_machine='false'
+	    
+            if [ -f /sys/fs/cgroup/memory.max ]; then
+                add_metric memory_limit "$(cat /sys/fs/cgroup/memory.max | numfmt --to=iec-i)"
+            elif [ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+                add_metric memory_limit "$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes | numfmt --to=iec-i)"
+            else
+                add_metric memory_limit 'unknown'
+            fi
+
+            if [ -f /sys/fs/cgroup/cpu.max ]; then
+                add_metric cpu_limit "$(cat /sys/fs/cgroup/cpu.max | awk '{print $1 / $2}')"
+            elif [ -f /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us ] && [ -f /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us ]; then
+                local cpu_quota=$(cat /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us)
+                local cpu_period=$(cat /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us)
+                add_metric cpu_limit "$(($cpu_quota / $cpu_period))"
+            else
+                add_metric cpu_limit 'unknown'
+            fi
         fi
     fi
 
-    add_metric os "$OSTYPE"
-    add_metric arch "$(arch)"
-    add_metric container "$container"
-    add_metric cpu "$cpu"
-    [ -n "$cpu_count" ] && add_metric cpu_count "$cpu_count"
-    add_metric memory "$memory"
     add_metric battery "$battery"
+    add_metric container "$container"
+    add_metric virtual_machine "$virtual_machine"
 }
 
 node_metrics(){
