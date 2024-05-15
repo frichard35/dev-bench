@@ -259,7 +259,7 @@ os_metrics(){
         local battery_status="$(wmic Path Win32_Battery Get BatteryStatus | tail -2 | head -1 | tr -d "[:space:]")"
         [ "$battery_status" = "1" ] && battery=true
 
-        local computer_model="$(wmic csproduct get name | tail -2 | head -1 | tr -d "[:space:]")"
+        local computer_model="$(wmic csproduct get name | tail -2 | head -1 | xargs)"
         add_metric 'computer_model' "$computer_model"
         if [[ "${computer_model,,}" = *vmware* ]] || [[ "${computer_model,,}" = *virt* ]] || [[ "${computer_model,,}" = *hyper* ]] || [[ "${computer_model,,}" = *hvm* ]]; then
             virtual_machine='true'
