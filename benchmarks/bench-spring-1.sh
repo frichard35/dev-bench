@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+# BENCHMARK: Build a spring boot application (petclinic-rest) using maven
+#
+# IMPORTANT: To edit this file bump the version and save as a new file benchmark/bench-spring-<version>.sh
+#
 source "$BASE_DIR/benchmarks/common-1.sh"
 
-#spring benchmark
 readonly benchmark_version='1'
 readonly benchmark_id="spring-$benchmark_version"
 readonly benchmark_dir='petclinic-rest'

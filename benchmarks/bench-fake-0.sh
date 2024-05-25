@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-
-#fake benchmark
+# BENCHMARK: Empty benchmark to test the framework
+#
 readonly benchmark_version='0'
 readonly benchmark_id="fake-$benchmark_version"
 readonly benchmark_dir='fake-benchmark'
@@ -18,6 +18,10 @@ pre_run_benchmark() {
 run_benchmark(){
     echo "run_benchmark fake"
     sleep 1
+}
+
+post_run_benchmark(){
+    echo "post_run_benchmark fake"
 }
 
 collect_metrics_benchmark(){

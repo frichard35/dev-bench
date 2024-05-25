@@ -91,6 +91,7 @@ main_benchmark() {
         echo "[DEV BENCH] Context '$db_context' initialisation done"
     fi
 
+    local i
     for ((i=1;i<=iterations;i++)); do
         bench "$prepare"
         if (( i < iterations )) && (( wait > 0 )); then
@@ -198,7 +199,6 @@ bench() {
     echo -e "\n[DEV BENCH] $benchmark_id benchmark starting..."
     { time run_benchmark; } 2>&1 | tee bench.log
     local exit_code="${PIPESTATUS[0]}"
-    popd >/dev/null
     if [ "$exit_code" != "0" ]; then
         echo -e "\n[DEV BENCH ERROR]: $benchmark_id exit with code $exit_code.\n"
         exit $exit_code
@@ -207,7 +207,13 @@ bench() {
     local result="$(tail -3 "$WRK_PATH/$benchmark_dir/bench.log" | head -1 | sed 's/,/./' | awk '{print $NF}')"
     local result_seconds="$(echo "$result" | LC_NUMERIC=en_US.UTF-8 awk --use-lc-numeric -F'[ms]' '{print 60*$1+$2}' 2>/dev/null)"
     echo -e "\n[DEV BENCH] $benchmark_id benchmark terminated in $result_seconds seconds."
-    
+
+    if [[ $(type -t post_run_benchmark) == function ]]; then
+        echo -e "\n[DEV BENCH] $benchmark_id benchmark post-run"
+        post_run_benchmark
+        echo "[DEV BENCH] $benchmark_id benchmark post-run done"
+    fi
+    popd >/dev/null
 
     echo -e "\n[DEV BENCH] collect metrics about this run"
     metrics_logging "$result_seconds"

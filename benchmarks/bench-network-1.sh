@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+# BENCHMARK: Download maven dependencies to validate a spring boot application (petclinic-rest)
+#
+# IMPORTANT: To edit this file bump the version and save as a new file benchmark/bench-network-<version>.sh
+#
 source "$BASE_DIR/benchmarks/common-1.sh"
 
-#network benchmark
 readonly benchmark_version='1'
 readonly benchmark_id="network-$benchmark_version"
 readonly benchmark_dir='petclinic-rest'

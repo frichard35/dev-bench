@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# BENCHMARK: Build an angular application (petclinic-angular) using npm
+#
+# IMPORTANT: To edit this file bump the version and save as a new file benchmark/bench-angular-<version>.sh
+#
 source "$BASE_DIR/benchmarks/common-1.sh"
 
 #angular benchmark
