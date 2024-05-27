@@ -34,7 +34,7 @@ main() {
         usage
         exit
     
-    elif [ "$1" = "publish" ]; then
+    elif [ "$1" = "--publish" ] || [ "$1" = "-P" ]; then
         shift
         main_publish "$@"
     
@@ -159,7 +159,7 @@ usage() {
 
 
     echo -e "[Usage publish results] publish benchmark from results.log"
-    echo -e "  $0 publish [options]"
+    echo -e "  $0 -P, --publish [options]"
     echo -e "    -c, --context <context>       load a dev context"
     echo -e "    --file <file>                 publish <file> default results.log"
     echo -e "    --contributor <info>          (optional) Any information about the contributor"
