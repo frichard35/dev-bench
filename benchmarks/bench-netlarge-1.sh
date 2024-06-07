@@ -29,11 +29,12 @@ pre_run_benchmark() {
         proxy_config=( '--noproxy' '*' )
     fi
 
-    # Test current token if any
-    local login_response; login_response="$(_docker_curl -o /dev/null -LI -w "%{http_code}@%header{www-authenticate}" \
+    # Test current token if any, retrieve auth info
+    rm -f headers.txt
+    local login_status; login_status="$(_docker_curl -o /dev/null -LI -w "%{http_code}" --dump-header headers.txt \
                                              "$DOCKER_REGISTRY/v2/$docker_image/manifests/$docker_tag" || true)"
-    local login_status; login_status=$(echo "$login_response" | cut -d@ -f1)
-    local login_www_authenticate; login_www_authenticate=$(echo "$login_response" | cut -d@ -f2)
+    local login_www_authenticate; login_www_authenticate=$(cat headers.txt | sed -nr 's,www-authenticate: ,,Ip')
+
     if [ "$login_status" -eq 401 ] || [ "$login_status" -eq 403 ]; then
         _docker_login "$login_www_authenticate"
     elif [ "$login_status" -ne 200 ]; then
@@ -94,7 +95,7 @@ _docker_login(){
     if [ -n "$DOCKER_REGISTRY_LOGIN" ] && [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
         local docker_creds=("-u" "$DOCKER_REGISTRY_LOGIN:$DOCKER_REGISTRY_PASSWORD")
     fi
-
+    echo "pre_run_benchmark netlarge - bearer authentication retrieving the token"
     _docker_curl_no_auth "${docker_creds[@]}" \
     --get --data-urlencode "service=$service" --data-urlencode "scope=$scope" "$realm" \
     | jq -r '.token' > .docker-token
