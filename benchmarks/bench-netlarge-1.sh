@@ -31,7 +31,7 @@ pre_run_benchmark() {
 
     # Test current token if any
     local login_response; login_response="$(_docker_curl -o /dev/null -LI -w "%{http_code}@%header{www-authenticate}" \
-                                             "$DOCKER_REGISTRY/v2/$docker_image/manifests/$docker_tag")"
+                                             "$DOCKER_REGISTRY/v2/$docker_image/manifests/$docker_tag" || true)"
     local login_status; login_status=$(echo "$login_response" | cut -d@ -f1)
     local login_www_authenticate; login_www_authenticate=$(echo "$login_response" | cut -d@ -f2)
     if [ "$login_status" -eq 401 ] || [ "$login_status" -eq 403 ]; then
@@ -44,7 +44,7 @@ pre_run_benchmark() {
     fi
 
     #test if layer available
-    local test_layer; test_layer="$(_docker_curl -S -m 5 -LI -o /dev/null  -w "%{http_code}" "$DOCKER_REGISTRY/v2/$docker_image/blobs/sha256:$docker_layer" || true)"
+    local test_layer; test_layer="$(_docker_curl -m 5 -LI -o /dev/null  -w "%{http_code}" "$DOCKER_REGISTRY/v2/$docker_image/blobs/sha256:$docker_layer" || true)"
     if [ "$test_layer" -ne 200 ]; then
         echo "Error: Docker registry layer is not available, maybe a cache issue, retry later..."
         exit 1
@@ -53,7 +53,7 @@ pre_run_benchmark() {
 }
 
 run_benchmark(){
-    _docker_curl -LS -o layer1GB.gz "$DOCKER_REGISTRY/v2/$docker_image/blobs/sha256:$docker_layer"
+    _docker_curl -L -o layer1GB.gz "$DOCKER_REGISTRY/v2/$docker_image/blobs/sha256:$docker_layer"
 }
 
 post_run_benchmark(){
@@ -95,14 +95,14 @@ _docker_login(){
         local docker_creds=("-u" "$DOCKER_REGISTRY_LOGIN:$DOCKER_REGISTRY_PASSWORD")
     fi
 
-    _docker_curl_no_auth -S "${docker_creds[@]}" \
+    _docker_curl_no_auth "${docker_creds[@]}" \
     --get --data-urlencode "service=$service" --data-urlencode "scope=$scope" "$realm" \
     | jq -r '.token' > .docker-token
 }
 
 #curl wrapper without auth
 _docker_curl_no_auth() {
-    curl -s "${proxy_config[@]}" \
+    curl -sS "${proxy_config[@]}" \
         -H "User-Agent: $docker_user_agent" -H 'Accept-Encoding: gzip' -H 'Accept:' "$@"
 }
 
