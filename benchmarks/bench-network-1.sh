@@ -23,4 +23,9 @@ run_benchmark(){
 
 collect_metrics_benchmark(){
     maven_metrics
+    if [ -n "$DB_PROXY_HOST" ] && [ -n "$DB_PROXY_PORT" ]; then
+        add_metric proxy "$DB_PROXY_HOST:$DB_PROXY_PORT"
+    else
+        add_metric proxy "no"
+    fi
 }
